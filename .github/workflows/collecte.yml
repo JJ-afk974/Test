@@ -22,7 +22,7 @@ jobs:
       - name: Lancer la collecte
         env:
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
-        run: python collecte.py
+        run: python Collecte.py
 
       - name: Commit et push du CSV
         run: |
