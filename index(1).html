@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Météo LFPB - Paris Le Bourget</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent2: #fb923c;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  header {
+    max-width: 1100px;
+    margin: 0 auto 24px auto;
+  }
+  h1 {
+    font-size: 1.6rem;
+    margin: 0 0 4px 0;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card h2 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .current-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat .value {
+    font-size: 1.8rem;
+    font-weight: 700;
+  }
+  .stat .label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  canvas {
+    max-height: 320px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 12px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--card);
+  }
+  .table-wrap {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .loading, .error {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .error { color: #f87171; }
+  .updated {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌤️ Météo Paris Le Bourget (LFPB)</h1>
+  <div class="subtitle" id="page-subtitle">Données collectées automatiquement depuis l'API The Weather Company</div>
+  <div style="margin-top:8px;"><a href="selector.html" style="color:#38bdf8; font-size:0.85rem;">&larr; Choisir un autre jour</a></div>
+</header>
+
+<div class="container">
+
+  <!-- Bloc condition actuelle -->
+  <div class="card" id="current-card">
+    <h2>Conditions actuelles <span class="badge">LIVE</span></h2>
+    <div id="current-loading" class="loading">Chargement...</div>
+    <div class="current-grid" id="current-grid" style="display:none;"></div>
+    <div class="updated" id="current-updated"></div>
+  </div>
+
+  <!-- Bloc graphique température live -->
+  <div class="card">
+    <h2>Historique température (collecte live)</h2>
+    <div id="live-chart-loading" class="loading">Chargement...</div>
+    <canvas id="liveChart"></canvas>
+  </div>
+
+  <!-- Bloc graphique prévisions -->
+  <div class="card">
+    <h2>Prévisions 3 jours, heure par heure</h2>
+    <div id="forecast-chart-loading" class="loading">Chargement...</div>
+    <canvas id="forecastChart"></canvas>
+  </div>
+
+  <!-- Bloc tableau live -->
+  <div class="card">
+    <h2>Tableau — données live</h2>
+    <div id="live-table-loading" class="loading">Chargement...</div>
+    <div class="table-wrap">
+      <table id="live-table" style="display:none;">
+        <thead><tr id="live-table-head"></tr></thead>
+        <tbody id="live-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bloc tableau prévisions -->
+  <div class="card">
+    <h2>Tableau — prévisions</h2>
+    <div id="forecast-table-loading" class="loading">Chargement...</div>
+    <div class="table-wrap">
+      <table id="forecast-table" style="display:none;">
+        <thead><tr id="forecast-table-head"></tr></thead>
+        <tbody id="forecast-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- Configuration : adapte ces noms de fichiers si besoin ----
+const LIVE_CSV = "lfpb_live.csv";
+const FORECAST_CSV = "lfpb_forecast.csv";
+
+const chartColors = { accent: "#38bdf8", accent2: "#fb923c", grid: "#334155", text: "#94a3b8" };
+
+function loadCsv(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      download: true,
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: (results) => resolve(results.data),
+      error: (err) => reject(err),
+    });
+  });
+}
+
+function fillTable(data, headEl, bodyEl, tableEl, loadingEl, maxRows) {
+  if (!data || data.length === 0) {
+    loadingEl.textContent = "Aucune donnée disponible.";
+    loadingEl.className = "error";
+    return;
+  }
+  const cols = Object.keys(data[0]);
+  headEl.innerHTML = cols.map(c => `<th>${c}</th>`).join("");
+
+  const rows = data.slice(-maxRows).reverse();
+  bodyEl.innerHTML = rows.map(row =>
+    "<tr>" + cols.map(c => `<td>${row[c] ?? ""}</td>`).join("") + "</tr>"
+  ).join("");
+
+  loadingEl.style.display = "none";
+  tableEl.style.display = "table";
+}
+
+// ---- Conditions actuelles (dernière ligne du live CSV) ----
+async function renderCurrent() {
+  const loadingEl = document.getElementById("current-loading");
+  const gridEl = document.getElementById("current-grid");
+  const updatedEl = document.getElementById("current-updated");
+  try {
+    const data = await loadCsv(LIVE_CSV);
+    if (!data.length) throw new Error("vide");
+    const last = data[data.length - 1];
+
+    const stats = [
+      { label: "Température", value: `${last.temperature ?? "—"}°C` },
+      { label: "Ressenti", value: `${last.temperatureFeelsLike ?? "—"}°C` },
+      { label: "Vent", value: `${last.windSpeed ?? "—"} km/h` },
+      { label: "Humidité", value: `${last.relativeHumidity ?? "—"}%` },
+      { label: "Pression", value: `${last.pressureMeanSeaLevel ?? "—"} hPa` },
+      { label: "Visibilité", value: `${last.visibility ?? "—"} km` },
+    ];
+    gridEl.innerHTML = stats.map(s => `
+      <div class="stat">
+        <div class="value">${s.value}</div>
+        <div class="label">${s.label}</div>
+      </div>
+    `).join("");
+
+    loadingEl.style.display = "none";
+    gridEl.style.display = "grid";
+    updatedEl.textContent = "Dernière mesure : " + (last.validTimeLocal ?? last._collecte_le ?? "inconnue");
+  } catch (e) {
+    loadingEl.textContent = "Impossible de charger les données live (" + LIVE_CSV + ").";
+    loadingEl.className = "error";
+  }
+}
+
+// ---- Graphique live ----
+async function renderLiveChart() {
+  const loadingEl = document.getElementById("live-chart-loading");
+  try {
+    const data = await loadCsv(LIVE_CSV);
+    if (!data.length) throw new Error("vide");
+
+    const labels = data.map(d => d.validTimeLocal ?? d._collecte_le);
+    const temps = data.map(d => d.temperature);
+
+    new Chart(document.getElementById("liveChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Température (°C)",
+          data: temps,
+          borderColor: chartColors.accent,
+          backgroundColor: "rgba(56,189,248,0.15)",
+          tension: 0.3,
+          fill: true,
+          pointRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: chartColors.text } } },
+        scales: {
+          x: { ticks: { color: chartColors.text, maxTicksLimit: 10 }, grid: { color: chartColors.grid } },
+          y: { ticks: { color: chartColors.text }, grid: { color: chartColors.grid } },
+        }
+      }
+    });
+    loadingEl.style.display = "none";
+  } catch (e) {
+    loadingEl.textContent = "Impossible de charger le graphique live.";
+    loadingEl.className = "error";
+  }
+}
+
+// ---- Filtrage par jour sélectionné (paramètre ?day=N, 1 à 6) ----
+function getSelectedDay() {
+  const params = new URLSearchParams(window.location.search);
+  const day = parseInt(params.get("day"), 10);
+  return (day >= 1 && day <= 6) ? day : null;
+}
+
+function filterByDay(data, dayNumber) {
+  if (!dayNumber || !data.length) return data;
+  // on extrait la date (YYYY-MM-DD) de chaque ligne à partir du champ "time"
+  const getDate = (row) => (row.time ?? "").slice(0, 10);
+  const uniqueDates = [...new Set(data.map(getDate))].filter(Boolean).sort();
+  const targetDate = uniqueDates[dayNumber - 1];
+  if (!targetDate) return [];
+  return data.filter(row => getDate(row) === targetDate);
+}
+
+function updateSubtitle(dayNumber, dateLabel) {
+  const subtitleEl = document.getElementById("page-subtitle");
+  if (dayNumber) {
+    subtitleEl.textContent = `Détail — Jour ${dayNumber}` + (dateLabel ? ` (${dateLabel})` : "");
+  }
+}
+
+// ---- Graphique prévisions ----
+async function renderForecastChart() {
+  const loadingEl = document.getElementById("forecast-chart-loading");
+  try {
+    let data = await loadCsv(FORECAST_CSV);
+    if (!data.length) throw new Error("vide");
+
+    const selectedDay = getSelectedDay();
+    if (selectedDay) {
+      data = filterByDay(data, selectedDay);
+      if (data.length) updateSubtitle(selectedDay, data[0].time?.slice(0, 10));
+    }
+    if (!data.length) throw new Error("aucune donnée pour ce jour");
+
+    const labels = data.map(d => d.time);
+    const temps = data.map(d => d.temperature);
+
+    new Chart(document.getElementById("forecastChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Température prévue (°C)",
+          data: temps,
+          borderColor: chartColors.accent2,
+          backgroundColor: "rgba(251,146,60,0.15)",
+          tension: 0.3,
+          fill: true,
+          pointRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: chartColors.text } } },
+        scales: {
+          x: { ticks: { color: chartColors.text, maxTicksLimit: 12 }, grid: { color: chartColors.grid } },
+          y: { ticks: { color: chartColors.text }, grid: { color: chartColors.grid } },
+        }
+      }
+    });
+    loadingEl.style.display = "none";
+  } catch (e) {
+    loadingEl.textContent = "Impossible de charger le graphique des prévisions.";
+    loadingEl.className = "error";
+  }
+}
+
+// ---- Tableaux ----
+async function renderTables() {
+  try {
+    const liveData = await loadCsv(LIVE_CSV);
+    fillTable(liveData,
+      document.getElementById("live-table-head"),
+      document.getElementById("live-table-body"),
+      document.getElementById("live-table"),
+      document.getElementById("live-table-loading"),
+      50
+    );
+  } catch (e) {
+    document.getElementById("live-table-loading").textContent = "Erreur de chargement.";
+  }
+
+  try {
+    let forecastData = await loadCsv(FORECAST_CSV);
+    const selectedDay = getSelectedDay();
+    if (selectedDay) {
+      forecastData = filterByDay(forecastData, selectedDay);
+    }
+    fillTable(forecastData,
+      document.getElementById("forecast-table-head"),
+      document.getElementById("forecast-table-body"),
+      document.getElementById("forecast-table"),
+      document.getElementById("forecast-table-loading"),
+      72
+    );
+  } catch (e) {
+    document.getElementById("forecast-table-loading").textContent = "Erreur de chargement.";
+  }
+}
+
+renderCurrent();
+renderLiveChart();
+renderForecastChart();
+renderTables();
+</script>
+
+</body>
+</html>
