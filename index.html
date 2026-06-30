@@ -79,6 +79,20 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
+  .row-label {
+  max-width: 900px;
+  margin: 0 auto 12px auto;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  }
+  .row-label.high { color: var(--accent2); }
+  .row-label.low { color: var(--accent); }
   @media (max-width: 600px) {
     .grid {
       grid-template-columns: repeat(2, 1fr);
@@ -94,10 +108,10 @@
   <div class="subtitle">Choisis un jour pour voir le détail</div>
 </header>
 
-<div class="row-label high">🔺 Température plus élevée</div>
+<div class="row-label high">🔺 Quelle sera la température la plus élevée ?</div>
 <div class="grid" id="grid-high"></div>
 
-<div class="row-label low">🔻 Température plus basse</div>
+<div class="row-label low">🔻 Quelle sera la température la plus basse ?</div>
 <div class="grid" id="grid-low"></div>
 
 <script>
